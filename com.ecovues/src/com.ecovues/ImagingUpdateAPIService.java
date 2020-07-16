@@ -141,13 +141,14 @@ public class ImagingUpdateAPIService {
             String docsdeleted="";
         
             
-            String query="select * from employee_num_update_v";
-        
-            NamedParameterStatement p = new NamedParameterStatement(ebsconn, query, true);
-
-            ResultSet rs = null;
+           
             
             try {
+                String query="select * from employee_num_update_v";
+                
+                NamedParameterStatement p = new NamedParameterStatement(ebsconn, query, true);
+
+                ResultSet rs = null;
                 rs = p.executeQuery();
                 
                 //Get seq number
@@ -190,6 +191,7 @@ public class ImagingUpdateAPIService {
             }
                                     
         }finally{
+        
         if (servicesFactory != null){
         servicesFactory.logout();
         }
@@ -203,6 +205,7 @@ public class ImagingUpdateAPIService {
     output.put("Number of documents updated", String.valueOf(docsupdated));
     output.put("Number of documents failed", String.valueOf(docsfailed));
     output.put("Sequence Number", nextID_from_seq);
+      //  output.put("LOG", sessionLog(nextID_from_seq));
     return Response.status(200).entity(output.toString()).header("Access-Control-Allow-Origin",
                                                                   "*").header("Access-Control-Allow-Methods",
                                                                               "GET, POST, DELETE, PUT").build();
@@ -218,7 +221,14 @@ public class ImagingUpdateAPIService {
             Statement statement = ebsconn.createStatement();
             statement.executeUpdate(query);
         } catch (SQLException e) {
+            
             logger.info("Message while inserting into log table docid: "+docid+","+e.getMessage());
+        }
+        finally{
+            try {
+                ebsconn.close();
+            } catch (SQLException e) {
+            }
         }
     }
     
@@ -250,7 +260,7 @@ public class ImagingUpdateAPIService {
                 rs = p.executeQuery();
                 while (rs.next()) {
                     buffer.append(rs.getString("log_data") + "\n");
-                    System.out.println(rs.getString("log_data"));
+                 //   System.out.println(rs.getString("log_data"));
                 }
 //                org.json.JSONObject jsonArray = new org.json.JSONObject();
 //                jsonArray = JdbcHelper.convertToJSON(rs);
@@ -270,4 +280,6 @@ public class ImagingUpdateAPIService {
                                                                   "*").header("Access-Control-Allow-Methods",
                                                                               "GET, POST, DELETE, PUT").build();
             }
+    
+      
 }
