@@ -1,6 +1,7 @@
 package com.ecovues;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -10,7 +11,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -101,7 +101,7 @@ public class ImagingUpdateAPIService {
     }
     @GET
     @Path("/updateEmployeeNumber")
-    @Consumes("application/json")
+    @Produces("application/json")
     public Response updateEmployeeNumber() throws Exception {
     logger.info("Entering updateEmployeeNumber method");
     ConfigData config = configs();
@@ -119,6 +119,7 @@ public class ImagingUpdateAPIService {
     String errorMessage="";
         int docsupdated=0;
         int docsfailed=0;
+        int nextID_from_seq=0;
                  
     try {
         
@@ -129,14 +130,17 @@ public class ImagingUpdateAPIService {
         DocumentService documentService = servicesFactory.getDocumentService();
         NameId appNameId = null;
         List<NameId> appList = documentService.listTargetApplications(Document.Ability.CREATEDOCUMENT);
-          
+        
+            Connection ebsconn = JdbcHelper.getJDBCConnectionFromDataSource(true);
+            
+            
         
                 
           
             String docGUIId="";
             String docsdeleted="";
         
-            Connection ebsconn = JdbcHelper.getJDBCConnectionFromDataSource(true);
+            
             String query="select * from employee_num_update_v";
         
             NamedParameterStatement p = new NamedParameterStatement(ebsconn, query, true);
@@ -145,6 +149,15 @@ public class ImagingUpdateAPIService {
             
             try {
                 rs = p.executeQuery();
+                
+                //Get seq number
+                String sql = "select EMPLOYEENUM_UPDATE_STATUS_SEQ.nextval from DUAL";
+                PreparedStatement ps = ebsconn.prepareStatement(sql);
+                ResultSet rseq = ps.executeQuery();
+                
+                if(rseq.next())
+                     nextID_from_seq = rseq.getInt(1);
+                
                 //Update document
                      String docid="";
                 while(rs.next()){
@@ -157,12 +170,12 @@ public class ImagingUpdateAPIService {
                                logger.info("After: "+new Date());
                         logger.info("Update is successfull: "+docid);
                         docsupdated = docsupdated+1;
-                                updateLogTable(docid,"Success","Updated Employee Number to "+rs.getString("employee_num"));                                   
+                                updateLogTable(docid,"Success","Updated Employee Number to "+rs.getString("employee_num"),nextID_from_seq);                                   
                     }
                     catch (Exception e) 
                     {
                                     
-                                updateLogTable(docid,"Failed",e.getMessage());  
+                                updateLogTable(docid,"Failed",e.getMessage(),nextID_from_seq);  
                                 docsfailed = docsfailed+1;
                     }
                 }
@@ -189,14 +202,15 @@ public class ImagingUpdateAPIService {
     }
     output.put("Number of documents updated", String.valueOf(docsupdated));
     output.put("Number of documents failed", String.valueOf(docsfailed));
+    output.put("Sequence Number", nextID_from_seq);
     return Response.status(200).entity(output.toString()).header("Access-Control-Allow-Origin",
                                                                   "*").header("Access-Control-Allow-Methods",
                                                                               "GET, POST, DELETE, PUT").build();
     }
     
-    public void updateLogTable(String docid, String status, String message){
+    public void updateLogTable(String docid, String status, String message, int nextID_from_seq){
         Connection ebsconn = JdbcHelper.getJDBCConnectionFromDataSource(true);
-       String query="INSERT INTO EMPLOYEENUM_UPDATE_STATUS " + "VALUES ('"+docid+"','"+ status+"','"+message+"')";
+       String query="INSERT INTO EMPLOYEENUM_UPDATE_STATUS " + "VALUES ('"+docid+"','"+ status+"','"+message+"',"+nextID_from_seq+")";
        logger.info("Log insert query: "+query);
 
         // insert the data
@@ -212,7 +226,7 @@ public class ImagingUpdateAPIService {
             @Path("/getLog")
             @Produces("application/json")
             public Response getLog(
-            @DefaultValue("status") @QueryParam("status") String status, @DefaultValue("1000") @QueryParam("limit") String limit
+            @DefaultValue("status") @QueryParam("status") String status, @DefaultValue("1000") @QueryParam("limit") String limit, @DefaultValue("sequence_num") @QueryParam("sequence") String sequence
             , @DefaultValue("did") @QueryParam("did") String did) throws Exception {
             
             logger.info("Entering into a method apInvoiceList");
@@ -225,18 +239,22 @@ public class ImagingUpdateAPIService {
                 if(!did.equals("did")) {
                     did = "'"+did+"'";
                 }
-            String query = "select * from EMPLOYEENUM_UPDATE_STATUS where status="+status+" and did="+did+" and rownum<="+limit;
+            String query = "select 'Did:'||did||', Status:'||status||', Message:'||message||', Sequence:'||sequence_num as log_data from EMPLOYEENUM_UPDATE_STATUS where status="+status+" and did="+did+" and sequence_num="+sequence+" and rownum<="+limit;
                 logger.info("query: "+query);
            
-          
+                StringBuffer buffer = new StringBuffer();
             try {
                
                 NamedParameterStatement p = new NamedParameterStatement(ebsconn, query, true);
                 ResultSet rs = null;
                 rs = p.executeQuery();
-                org.json.JSONObject jsonArray = new org.json.JSONObject();
-                jsonArray = JdbcHelper.convertToJSON(rs);
-                outputStr = jsonArray.toString();
+                while (rs.next()) {
+                    buffer.append(rs.getString("log_data") + "\n");
+                    System.out.println(rs.getString("log_data"));
+                }
+//                org.json.JSONObject jsonArray = new org.json.JSONObject();
+//                jsonArray = JdbcHelper.convertToJSON(rs);
+//                outputStr = jsonArray.toString();
                 p.close();
                 rs.close();
                 
@@ -248,7 +266,7 @@ public class ImagingUpdateAPIService {
             }
 
             logger.info("Exiting apInvoiceList");
-            return     Response.status(200).entity(outputStr).header("Access-Control-Allow-Origin",
+            return     Response.status(200).entity(buffer.toString()).header("Access-Control-Allow-Origin",
                                                                   "*").header("Access-Control-Allow-Methods",
                                                                               "GET, POST, DELETE, PUT").build();
             }
