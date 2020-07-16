@@ -144,7 +144,7 @@ public class ImagingUpdateAPIService {
            
             
             try {
-                String query="select * from employee_num_update_v";
+                String query="select * from employee_num_update_v where status='PENDING_UPDATE'";
                 
                 NamedParameterStatement p = new NamedParameterStatement(ebsconn, query, true);
 
